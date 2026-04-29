@@ -1,4 +1,5 @@
 from langdetect import detect, LangDetectException
+from services.multilingual_detector import multilingual_detector
 
 SUPPORTED_LANGUAGES = {
     'zh-cn': 'zh',
@@ -18,8 +19,16 @@ def detect_language(text):
     if not text or not text.strip():
         return {
             'language': 'en',
-            'confidence': 0.5
+            'confidence': 0.5,
+            'isCodeSwitching': False,
+            'languageDistribution': {},
+            'dominantIntentLanguage': 'en'
         }
+    
+    enhanced_result = multilingual_detector.detect_language_enhanced(text)
+    
+    if enhanced_result.get('isCodeSwitching'):
+        return enhanced_result
     
     try:
         detected = detect(text)
@@ -46,14 +55,46 @@ def detect_language(text):
         return {
             'language': mapped_lang,
             'confidence': confidence,
-            'detected': detected
+            'detected': detected,
+            'isCodeSwitching': False,
+            'languageDistribution': {mapped_lang: 1.0},
+            'dominantIntentLanguage': mapped_lang
         }
         
     except LangDetectException:
         return {
             'language': 'en',
-            'confidence': 0.5
+            'confidence': 0.5,
+            'isCodeSwitching': False,
+            'languageDistribution': {'en': 1.0},
+            'dominantIntentLanguage': 'en'
         }
+
+def detect_language_enhanced(text):
+    return multilingual_detector.detect_language_enhanced(text)
+
+def analyze_code_switching(text):
+    analysis = multilingual_detector.analyze_code_switching(text)
+    return {
+        'primary_language': analysis.primary_language,
+        'is_code_switching': analysis.is_code_switching,
+        'segments': [
+            {
+                'text': s.text,
+                'language': s.language,
+                'start_idx': s.start_idx,
+                'end_idx': s.end_idx,
+                'confidence': s.confidence
+            }
+            for s in analysis.segments
+        ],
+        'language_distribution': analysis.language_distribution,
+        'switch_points': analysis.switch_points,
+        'dominant_intent_language': analysis.dominant_intent_language
+    }
+
+def extract_bilingual_keywords(text):
+    return multilingual_detector.extract_all_keywords(text)
 
 def _contains_chinese(text):
     for char in text:

@@ -17,10 +17,18 @@ module.exports = {
   messageQueue: {
     concurrency: 50,
     delay: 0,
-    attempts: 3
+    attempts: 3,
+    sequentialConcurrency: 1
   },
   rateLimit: {
     windowMs: 60000,
     max: 100
+  },
+  ulid: {
+    epoch: 1704067200000
+  },
+  context: {
+    cacheTTL: 3600,
+    windowSize: 20
   }
 };

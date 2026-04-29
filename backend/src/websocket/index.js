@@ -1,8 +1,8 @@
 const { Server } = require('socket.io');
-const messageService = require('./services/messageService');
-const { generateUserId } = require('./utils/helpers');
+const messageService = require('../services/messageService');
+const { generateUserId } = require('../utils/helpers');
 
-const setupWebSocket = (server, httpServer) => {
+const setupWebSocket = (app, httpServer) => {
   const io = new Server(httpServer, {
     cors: {
       origin: "*",
@@ -12,6 +12,8 @@ const setupWebSocket = (server, httpServer) => {
     pingTimeout: 60000,
     pingInterval: 25000
   });
+
+  messageService.setIO(io);
 
   io.on('connection', (socket) => {
     console.log('Client connected:', socket.id);
@@ -50,12 +52,33 @@ const setupWebSocket = (server, httpServer) => {
         
         socket.emit('message-queued', {
           messageId: result.messageId,
+          sequenceNumber: result.sequenceNumber,
           timestamp: new Date()
         });
         
       } catch (error) {
         console.error('Error sending message:', error);
         socket.emit('error', { message: 'Failed to send message', error: error.message });
+      }
+    });
+    
+    socket.on('get-context', async ({ conversationId }) => {
+      try {
+        const context = await messageService.getConversationContext(conversationId);
+        socket.emit('context-data', { conversationId, context });
+      } catch (error) {
+        console.error('Error getting context:', error);
+        socket.emit('error', { message: 'Failed to get conversation context' });
+      }
+    });
+    
+    socket.on('verify-coherence', async ({ conversationId }) => {
+      try {
+        const result = await messageService.verifyConversationCoherence(conversationId);
+        socket.emit('coherence-result', { conversationId, result });
+      } catch (error) {
+        console.error('Error verifying coherence:', error);
+        socket.emit('error', { message: 'Failed to verify coherence' });
       }
     });
     
@@ -81,7 +104,7 @@ const setupWebSocket = (server, httpServer) => {
   });
 
   io.on('message-processed', (data) => {
-    const { conversationId, botMessage, escalated } = data;
+    const { conversationId, botMessage, escalated, userMessage } = data;
     
     io.to(conversationId).emit('bot-response', {
       message: botMessage,
@@ -90,7 +113,7 @@ const setupWebSocket = (server, httpServer) => {
     });
     
     if (escalated) {
-      io.to(conversationId).emit('conversations-escalated', {
+      io.to(conversationId).emit('conversation-escalated', {
         conversationId,
         reason: botMessage.metadata?.escalationReason || 'Unknown reason',
         timestamp: new Date()

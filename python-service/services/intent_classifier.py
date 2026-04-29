@@ -2,12 +2,15 @@ import re
 import jieba
 from typing import List, Dict, Any, Tuple
 from services.knowledge_base import get_knowledge_base
+from services.bilingual_intent_classifier import BilingualIntentClassifier
+from services.language_detector import detect_language_enhanced
 
 class IntentClassifier:
     def __init__(self):
         self.knowledge_base = get_knowledge_base()
         self.intents = self.knowledge_base.get('intents', {})
         self._build_keyword_index()
+        self.bilingual_classifier = BilingualIntentClassifier(self)
     
     def _build_keyword_index(self):
         self.keyword_map = {}
@@ -40,7 +43,14 @@ class IntentClassifier:
                 'suggested_responses': []
             }
         
-        tokens = self.tokenize(text, language)
+        language_analysis = detect_language_enhanced(text)
+        
+        if language_analysis.get('isCodeSwitching'):
+            return self.bilingual_classifier.classify_bilingual(text, language_analysis)
+        
+        dominant_lang = language_analysis.get('dominantIntentLanguage', language)
+        
+        tokens = self.tokenize(text, dominant_lang)
         text_lower = text.lower()
         
         intent_scores = {}
@@ -66,8 +76,10 @@ class IntentClassifier:
             return {
                 'intent': 'unknown',
                 'confidence': 0.3,
-                'entities': self._extract_entities(text, language),
-                'suggested_responses': ['我理解您的问题，但需要更多信息才能准确回答。请您详细描述一下您的需求。']
+                'entities': self._extract_entities(text, dominant_lang),
+                'suggested_responses': ['我理解您的问题，但需要更多信息才能准确回答。请您详细描述一下您的需求。'],
+                'isCodeSwitching': False,
+                'languageDistribution': language_analysis.get('languageDistribution', {})
             }
         
         sorted_intents = sorted(intent_scores.items(), key=lambda x: x[1], reverse=True)
@@ -76,13 +88,13 @@ class IntentClassifier:
         
         confidence = self._calculate_confidence(best_score, len(tokens))
         
-        entities = self._extract_entities(text, language)
+        entities = self._extract_entities(text, dominant_lang)
         
         suggested_responses = []
         if best_intent in self.intents:
             responses = self.intents[best_intent].get('responses', {})
-            if language in responses:
-                suggested_responses.append(responses[language])
+            if dominant_lang in responses:
+                suggested_responses.append(responses[dominant_lang])
             elif 'en' in responses:
                 suggested_responses.append(responses['en'])
         
@@ -91,6 +103,9 @@ class IntentClassifier:
             'confidence': confidence,
             'entities': entities,
             'suggested_responses': suggested_responses,
+            'isCodeSwitching': False,
+            'languageDistribution': language_analysis.get('languageDistribution', {}),
+            'dominantLanguage': dominant_lang,
             'alternatives': [
                 {'intent': intent, 'score': score}
                 for intent, score in sorted_intents[1:3]
