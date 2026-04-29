@@ -155,4 +155,73 @@ router.get('/languages', (req, res) => {
   res.json(formatSuccess(languages));
 });
 
+router.get('/conversations/:conversationId/context', async (req, res) => {
+  try {
+    const { conversationId } = req.params;
+    const context = await messageService.getConversationContext(conversationId);
+    res.json(formatSuccess(context));
+  } catch (error) {
+    res.status(500).json(formatError('Failed to get conversation context', 500, { error: error.message }));
+  }
+});
+
+router.post('/conversations/:conversationId/repair-sequence', async (req, res) => {
+  try {
+    const { conversationId } = req.params;
+    const result = await messageService.repairConversationSequence(conversationId);
+    res.json(formatSuccess(result, 'Sequence repaired successfully'));
+  } catch (error) {
+    res.status(500).json(formatError('Failed to repair sequence', 500, { error: error.message }));
+  }
+});
+
+router.get('/conversations/:conversationId/verify-coherence', async (req, res) => {
+  try {
+    const { conversationId } = req.params;
+    const result = await messageService.verifyConversationCoherence(conversationId);
+    res.json(formatSuccess(result));
+  } catch (error) {
+    res.status(500).json(formatError('Failed to verify coherence', 500, { error: error.message }));
+  }
+});
+
+router.post('/admin/repair-all-sequences', async (req, res) => {
+  try {
+    const conversationService = require('../services/conversationService');
+    const activeResult = await conversationService.getActiveConversations();
+    const escalatedResult = await conversationService.getEscalatedConversations();
+    
+    const conversations = [
+      ...(activeResult.success ? activeResult.data : []),
+      ...(escalatedResult.success ? escalatedResult.data : [])
+    ];
+    
+    const results = [];
+    for (const conv of conversations) {
+      try {
+        const result = await messageService.repairConversationSequence(conv.conversationId);
+        results.push({
+          conversationId: conv.conversationId,
+          success: true,
+          repairs: result.repairsCount
+        });
+      } catch (err) {
+        results.push({
+          conversationId: conv.conversationId,
+          success: false,
+          error: err.message
+        });
+      }
+    }
+    
+    res.json(formatSuccess({
+      total: results.length,
+      successCount: results.filter(r => r.success).length,
+      results
+    }, 'Bulk repair completed'));
+  } catch (error) {
+    res.status(500).json(formatError('Failed to perform bulk repair', 500, { error: error.message }));
+  }
+});
+
 module.exports = router;

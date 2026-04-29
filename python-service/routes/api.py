@@ -1,6 +1,8 @@
 from flask import Blueprint, request, jsonify
 from services.language_detector import detect_language
+from services.multilingual_detector import multilingual_detector, CodeSwitchAnalysis
 from services.intent_classifier import intent_classifier
+from services.bilingual_intent_classifier import bilingual_intent_classifier
 from services.response_generator import translate_text, generate_response
 from services.knowledge_base import get_knowledge_base, should_escalate_intent
 from config import config
@@ -23,6 +25,47 @@ def api_detect_language():
     return jsonify({
         'success': True,
         'data': result
+    })
+
+@api_bp.route('/detect-multilingual', methods=['POST'])
+def api_detect_multilingual():
+    data = request.get_json()
+    
+    if not data or 'text' not in data:
+        return jsonify({
+            'success': False,
+            'error': 'Text parameter is required'
+        }), 400
+    
+    text = data.get('text', '')
+    check_code_switching = data.get('checkCodeSwitching', True)
+    
+    analysis = multilingual_detector.analyze_multilingual(text, check_code_switching)
+    
+    convert_analysis = {
+        'hasCodeSwitching': analysis.has_code_switching,
+        'detectedLanguages': analysis.detected_languages,
+        'languageDistribution': analysis.language_distribution,
+        'segments': [
+            {
+                'language': seg.language,
+                'text': seg.text,
+                'startIndex': seg.start_index,
+                'endIndex': seg.end_index,
+                'confidence': seg.confidence
+            }
+            for seg in analysis.segments
+        ],
+        'dominantLanguage': analysis.dominant_language,
+        'dominantIntentLanguage': analysis.dominant_intent_language,
+        'isBilingual': analysis.is_bilingual,
+        'switchPoints': analysis.switch_points,
+        'languageSequence': analysis.language_sequence
+    }
+    
+    return jsonify({
+        'success': True,
+        'data': convert_analysis
     })
 
 @api_bp.route('/translate', methods=['POST'])
@@ -64,8 +107,15 @@ def api_intent():
     
     text = data.get('text', '')
     language = data.get('language', 'en')
+    use_bilingual = data.get('useBilingual', True)
+    context_intents = data.get('contextIntents', None)
     
-    result = intent_classifier.classify(text, language)
+    if use_bilingual:
+        result = bilingual_intent_classifier.classify_bilingual_intent(
+            text, language, context_intents
+        )
+    else:
+        result = intent_classifier.classify(text, language)
     
     should_escalate = should_escalate_intent(result.get('intent', 'unknown')) or \
                        result.get('confidence', 0) < config.ESCALATION_THRESHOLD
@@ -173,11 +223,20 @@ def api_full_analyze():
     text = data.get('text', '')
     target_lang = data.get('targetLang', 'en')
     context = data.get('context', {})
+    use_bilingual = data.get('useBilingual', True)
+    context_intents = data.get('contextIntents', None)
+    
+    multilingual_analysis = multilingual_detector.analyze_multilingual(text, True)
     
     language_result = detect_language(text)
     source_lang = language_result.get('language', 'en')
     
-    intent_result = intent_classifier.classify(text, source_lang)
+    if use_bilingual:
+        intent_result = bilingual_intent_classifier.classify_bilingual_intent(
+            text, source_lang, context_intents
+        )
+    else:
+        intent_result = intent_classifier.classify(text, source_lang)
     
     translation_result = translate_text(text, target_lang, source_lang)
     
@@ -187,6 +246,22 @@ def api_full_analyze():
         'success': True,
         'data': {
             'language': language_result,
+            'multilingualAnalysis': {
+                'hasCodeSwitching': multilingual_analysis.has_code_switching,
+                'detectedLanguages': multilingual_analysis.detected_languages,
+                'languageDistribution': multilingual_analysis.language_distribution,
+                'dominantLanguage': multilingual_analysis.dominant_language,
+                'dominantIntentLanguage': multilingual_analysis.dominant_intent_language,
+                'isBilingual': multilingual_analysis.is_bilingual,
+                'segments': [
+                    {
+                        'language': seg.language,
+                        'text': seg.text,
+                        'confidence': seg.confidence
+                    }
+                    for seg in multilingual_analysis.segments
+                ]
+            },
             'intent': intent_result,
             'translation': translation_result,
             'response': response_result
@@ -200,5 +275,10 @@ def api_health():
         'service': 'nlp-translation-service',
         'languages': config.LANGUAGES,
         'intentThreshold': config.INTENT_THRESHOLD,
-        'escalationThreshold': config.ESCALATION_THRESHOLD
+        'escalationThreshold': config.ESCALATION_THRESHOLD,
+        'features': {
+            'codeSwitchingDetection': True,
+            'bilingualIntentClassification': True,
+            'multilingualAnalysis': True
+        }
     })
