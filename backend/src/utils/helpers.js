@@ -1,12 +1,27 @@
 const { v4: uuidv4 } = require('uuid');
+const { 
+  generateMessageId: generateULIDMessageId,
+  generateConversationId: generateULIDConversationId,
+  generateUserId: generateULIDUserId,
+  generateSequenceNumber,
+  extractTimestampFromId,
+  compareIds,
+  isValidULID
+} = require('./ulidGenerator');
 
 const generateId = () => uuidv4();
 
-const generateMessageId = () => `msg_${uuidv4().replace(/-/g, '')}`;
+const generateMessageId = (conversationId = null) => {
+  return generateULIDMessageId(conversationId);
+};
 
-const generateConversationId = () => `conv_${uuidv4().replace(/-/g, '')}`;
+const generateConversationId = () => {
+  return generateULIDConversationId();
+};
 
-const generateUserId = () => `user_${uuidv4().replace(/-/g, '')}`;
+const generateUserId = () => {
+  return generateULIDUserId();
+};
 
 const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
@@ -77,6 +92,10 @@ module.exports = {
   generateMessageId,
   generateConversationId,
   generateUserId,
+  generateSequenceNumber,
+  extractTimestampFromId,
+  compareIds,
+  isValidULID,
   delay,
   retry,
   formatError,

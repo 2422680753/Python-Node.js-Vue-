@@ -30,8 +30,28 @@ const conversationSchema = new mongoose.Schema({
     type: Number,
     default: 0
   },
+  nextSequenceNumber: {
+    type: Number,
+    default: 1
+  },
   intents: {
     type: [String]
+  },
+  intentHistory: {
+    type: [mongoose.Schema.Types.Mixed],
+    default: []
+  },
+  hasCodeSwitching: {
+    type: Boolean,
+    default: false
+  },
+  codeSwitchingCount: {
+    type: Number,
+    default: 0
+  },
+  languagesUsed: {
+    type: [String],
+    default: []
   },
   startTime: {
     type: Date,
@@ -57,5 +77,6 @@ const conversationSchema = new mongoose.Schema({
 
 conversationSchema.index({ userId: 1, status: 1 });
 conversationSchema.index({ status: 1, lastMessageTime: -1 });
+conversationSchema.index({ hasCodeSwitching: 1 });
 
 module.exports = mongoose.model('Conversation', conversationSchema);
